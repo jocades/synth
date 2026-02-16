@@ -87,11 +87,51 @@ bool is_key_down(CGKeyCode keycode) {
 // Get the frequency of a note relative to the pitch standard measured in semitones
 #define FREQ(semitones) (PITCH_STD * pow(TWELFTH_ROOT_OF_TWO, (semitones)))
 
-_Atomic f64 freq = 0.0;
+_Atomic f64 current_freq = 0.0;
+_Atomic f64 current_amp = 0.5;
+
+typedef enum {
+  OSC_SINE,
+  OSC_SQUARE,
+  OSC_TRIANGLE,
+  OSC_SAW,
+} OscKind;
+
+f64 osc(f64 hz, f64 time, OscKind kind) {
+  switch (kind) {
+    case OSC_SINE: return sin(W(hz) * time);
+
+    case OSC_SQUARE: return sin(W(hz) * time) > 0 ? 1.0 : -1.0;
+
+    case OSC_TRIANGLE: return asin(sin(W(hz) * time)) * (2.0 / PI);
+
+    case OSC_SAW: {
+      f64 out = 0.0;
+      for (f64 n = 1.0; n < 40.0; n++) {
+        out += (sin(n * W(hz) * time)) / n;
+      }
+      return out * (2.0 / PI);
+    }
+
+    default: return 0.0;
+  }
+}
+
+typedef struct {
+  _Atomic bool active;
+  f64 attack_time;
+  f64 release_time;
+  _Atomic f64 trigger_time;
+} Envelope;
+
+void note_on() {}
+
+void note_off() {}
 
 f32 make_sound(f64 time) {
-  atomic_load(&freq);
-  return 0.5 * sin(W(freq) * time);
+  f64 freq = atomic_load(&current_freq);
+  f64 amp = atomic_load(&current_amp);
+  return amp * osc(freq, time, OSC_SAW);
 }
 
 typedef enum {
@@ -149,13 +189,13 @@ int main() {
       if (is_key_down(piano[i].code)) {
         pressed = true;
         if (active != (int)piano[i].code) {
-          atomic_store(&freq, piano[i].freq);
+          atomic_store(&current_freq, piano[i].freq);
           active = piano[i].code;
         }
       }
 
       if (!pressed && active != -1) {
-        atomic_store(&freq, 0.0);
+        atomic_store(&current_freq, 0.0);
         active = -1;
       }
     }
