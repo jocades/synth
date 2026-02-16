@@ -98,9 +98,20 @@ typedef enum {
   OSC_SAW,
 } OscKind;
 
+f64 modulate(f64 hz, f64 time, f64 lfo_hz, f64 lfo_amp) {
+  return W(hz) * time + lfo_amp * hz * sin(W(lfo_hz) * time);
+}
+
+f64 osclfo(f64 hz, f64 time, f64 lfo_hz, f64 lfo_amp) {
+  f64 freq = modulate(hz, time, lfo_hz, lfo_amp);
+  return sin(freq);
+}
+
 f64 osc(f64 hz, f64 time, OscKind kind) {
   switch (kind) {
-    case OSC_SINE: return sin(W(hz) * time);
+    case OSC_SINE:
+      return sin(W(hz) * time + 0.01 * hz * sin(W(5.0) * time));
+      /* case OSC_SINE: return sin(W(hz) * time); */
 
     case OSC_SQUARE: return sin(W(hz) * time) > 0 ? 1.0 : -1.0;
 
