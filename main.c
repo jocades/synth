@@ -96,22 +96,12 @@ typedef enum {
   OSC_SQUARE,
   OSC_TRIANGLE,
   OSC_SAW,
+  OSC_NOISE,
 } OscKind;
-
-f64 modulate(f64 hz, f64 time, f64 lfo_hz, f64 lfo_amp) {
-  return W(hz) * time + lfo_amp * hz * sin(W(lfo_hz) * time);
-}
-
-f64 osclfo(f64 hz, f64 time, f64 lfo_hz, f64 lfo_amp) {
-  f64 freq = modulate(hz, time, lfo_hz, lfo_amp);
-  return sin(freq);
-}
 
 f64 osc(f64 hz, f64 time, OscKind kind) {
   switch (kind) {
-    case OSC_SINE:
-      return sin(W(hz) * time + 0.01 * hz * sin(W(5.0) * time));
-      /* case OSC_SINE: return sin(W(hz) * time); */
+    case OSC_SINE: return sin(W(hz) * time);
 
     case OSC_SQUARE: return sin(W(hz) * time) > 0 ? 1.0 : -1.0;
 
@@ -121,6 +111,34 @@ f64 osc(f64 hz, f64 time, OscKind kind) {
       f64 out = 0.0;
       for (f64 n = 1.0; n < 40.0; n++) {
         out += (sin(n * W(hz) * time)) / n;
+      }
+      return out * (2.0 / PI);
+    }
+
+    case OSC_NOISE: return 2.0 * ((f64)rand() / (f64)RAND_MAX) - 1.0;
+
+    default: return 0.0;
+  }
+}
+
+inline f64 modulate(f64 hz, f64 time, f64 lfo_hz, f64 lfo_amp) {
+  return W(hz) * time + lfo_amp * hz * sin(W(lfo_hz) * time);
+}
+
+f64 osclfo(f64 hz, f64 time, OscKind kind, f64 lfo_hz, f64 lfo_amp) {
+  f64 freq = modulate(hz, time, lfo_hz, lfo_amp);
+
+  switch (kind) {
+    case OSC_SINE: return sin(freq);
+
+    case OSC_SQUARE: return sin(freq) > 0 ? 1.0 : -1.0;
+
+    case OSC_TRIANGLE: return asin(sin(freq)) * (2.0 / PI);
+
+    case OSC_SAW: {
+      f64 out = 0.0;
+      for (f64 n = 1.0; n < 40.0; n++) {
+        out += (sin(n * freq)) / n;
       }
       return out * (2.0 / PI);
     }
@@ -182,18 +200,77 @@ f64 get_amp(Envelope* env, f64 time) {
   return amp;
 }
 
-Envelope env = {
-  .attack_time = 0.10,
-  .decay_time = 0.01,
-  .start_amp = 1.0,
-  .sustain_amp = 0.8,
-  .release_time = 0.2,
+/* Envelope env = { */
+/*   .attack_time = 0.10, */
+/*   .decay_time = 0.01, */
+/*   .start_amp = 1.0, */
+/*   .sustain_amp = 0.8, */
+/*   .release_time = 0.2, */
+/* }; */
+
+typedef struct Instrument Instrument;
+typedef f64 (*InstrumentSound)(Instrument* self, f64 freq, f64 time);
+
+struct Instrument {
+  f64 volume;
+  Envelope env;
+  InstrumentSound sound;
 };
+
+Instrument* inst_new(f64 volume) {
+  Instrument* inst = malloc(sizeof(Instrument));
+  memset(inst, 0, sizeof(Instrument));
+  inst->volume = volume;
+  return inst;
+}
+
+f64 inst_harmonica_sound(Instrument* self, f64 freq, f64 time) {
+  // clang-format off
+  return get_amp(&self->env, time) * (
+    + 1.0 * osclfo(freq, time, OSC_SQUARE, 5.0, 0.001)
+    + 0.5 * osc(freq * 1.5, time, OSC_SQUARE)
+    + 0.25 * osc(freq * 2, time, OSC_SQUARE)
+    + 0.05 * osc(0, time, OSC_NOISE)
+  );  // clang-format on
+}
+
+Instrument* inst_harmonica_new() {
+  Instrument* inst = inst_new(1.0);
+  inst->env.attack_time = 0.10;
+  inst->env.decay_time = 0.01;
+  inst->env.start_amp = 1.0;
+  inst->env.sustain_amp = 0.8;
+  inst->env.release_time = 0.2;
+  inst->sound = inst_harmonica_sound;
+  return inst;
+}
+
+f64 inst_bell_sound(Instrument* self, f64 freq, f64 time) {
+  // clang-format off
+  return get_amp(&self->env, time) * (
+    + 1.0 * osclfo(freq * 2.0, time, OSC_SINE, 5.0, 0.001)
+    + 0.5 * osc(freq * 3.0, time, OSC_SINE)
+    + 0.25 * osc(freq * 4.0, time, OSC_SINE)
+  );  // clang-format on
+}
+
+Instrument* inst_bell_new() {
+  Instrument* inst = inst_new(1.0);
+  inst->env.attack_time = 0.01;
+  inst->env.decay_time = 1.0;
+  inst->env.start_amp = 1.0;
+  inst->env.sustain_amp = 0.0;
+  inst->env.release_time = 1.0;
+  inst->sound = inst_bell_sound;
+  return inst;
+}
+
+Instrument* voice = NULL;
 
 f32 make_sound(f64 time) {
   f64 freq = atomic_load(&current_freq);
   f64 master = atomic_load(&current_amp);
-  return master * get_amp(&env, time) * osc(freq, time, OSC_SINE);
+  return master * voice->sound(voice, freq, time);
 }
 
 typedef enum {
@@ -287,6 +364,8 @@ int main() {
   curs_set(1);
   nodelay(stdscr, true);
 
+  voice = inst_bell_new();
+
   Engine engine;
   engine_init(&engine, make_sound);
 
@@ -329,7 +408,7 @@ int main() {
         if (note != &piano[i]) {
           atomic_store(&current_freq, piano[i].freq);
           note = &piano[i];
-          note_on(&env, now);
+          note_on(&voice->env, now);
         }
         break;
       }
@@ -337,7 +416,7 @@ int main() {
 
     if (!pressed && note != NULL) {
       note = NULL;
-      note_off(&env, now);
+      note_off(&voice->env, now);
     }
 
     if (is_key_down(KEY_Q)) break;
