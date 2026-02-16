@@ -119,25 +119,70 @@ f64 osc(f64 hz, f64 time, OscKind kind) {
 }
 
 typedef struct {
-  _Atomic bool active;
+  bool active;
   f64 attack_time;
+  f64 decay_time;
+  f64 start_amp;
+  f64 sustain_amp;
   f64 release_time;
-  _Atomic f64 trigger_time;
+  f64 on_time;
+  f64 off_time;
 } Envelope;
 
-void note_on(Envelope* env) {}
+void note_on(Envelope* env, f64 time) {
+  env->on_time = time;
+  env->active = true;
+}
 
-void note_off(Envelope* env) {}
+void note_off(Envelope* env, f64 time) {
+  env->off_time = time;
+  env->active = false;
+}
 
 f64 get_amp(Envelope* env, f64 time) {
   f64 amp = 0.0;
+  f64 lifetime = time - env->on_time;
+
+  if (env->active) {
+    if (lifetime <= env->attack_time) {
+      // Attack phase - approach max amplitude
+      amp = (lifetime / env->attack_time) * env->start_amp;
+    }
+
+    if (lifetime > env->attack_time && lifetime <= env->attack_time + env->decay_time) {
+      // Decay phase - reduce to sustained amplitude
+      amp =
+        ((lifetime - env->attack_time) / env->decay_time) * (env->sustain_amp - env->start_amp) +
+        env->start_amp;
+    }
+
+    if (lifetime > env->attack_time + env->decay_time) {
+      // Sustain phase - dont change until note release
+      amp = env->sustain_amp;
+    }
+  } else {
+    // Relase phase - key has been released
+    amp =
+      ((time - env->off_time) / env->release_time) * (0.0 - env->sustain_amp) + env->sustain_amp;
+  }
+
+  if (amp <= 0.0001) amp = 0.0;
+
   return amp;
 }
 
+Envelope env = {
+  .attack_time = 0.10,
+  .decay_time = 0.01,
+  .start_amp = 1.0,
+  .sustain_amp = 0.8,
+  .release_time = 0.2,
+};
+
 f32 make_sound(f64 time) {
   f64 freq = atomic_load(&current_freq);
-  f64 amp = atomic_load(&current_amp);
-  return amp * osc(freq, time, OSC_SINE);
+  f64 master = atomic_load(&current_amp);
+  return master * get_amp(&env, time) * osc(freq, time, OSC_SINE);
 }
 
 typedef enum {
@@ -168,20 +213,6 @@ typedef struct {
   f64 freq;
 } PianoKey;
 
-void print_piano() {
-  printf(
-    "\n"
-    "┌───┬───┬─┬───┬───┬───┬───┬─┬───┬─┬───┬───┐\n"
-    "│   │   │ │   │   │   │   │ │   │ │   │   │\n"
-    "│   │ W │ │ E │   │   │ T │ │ Y │ │ U │   │\n"
-    "│   └─┬─┘ └─┬─┘   │   └─┬─┘ └─┬─┘ └─┬─┘   │\n"
-    "│     │     │     │     │     │     │     │\n"
-    "│  A  │  S  │  D  │  F  │  G  │  H  │  J  │\n"
-    "└─────┴─────┴─────┴─────┴─────┴─────┴─────┘\n\n"
-    /* "   C     D     E     F     G     A     B  \n\n" */
-  );
-}
-
 void draw_piano() {
   const char* piano =
     "\n"
@@ -198,7 +229,7 @@ void draw_piano() {
 void draw_stats(int y, int x, const char* note) {
   move(y, 0);
   clrtoeol();
-  mvprintw(y, x, "Note: %s │ Frequency: %f Hz", note, atomic_load(&current_freq));
+  mvprintw(y, x, "Note: %-4s │ Frequency: %f Hz", note, atomic_load(&current_freq));
 }
 
 int main() {
@@ -247,6 +278,7 @@ int main() {
         if (keycode != (int)piano[i].code) {
           atomic_store(&current_freq, piano[i].freq);
           keycode = piano[i].code;
+          note_on(&env, now);
         }
         break;
       }
@@ -254,8 +286,9 @@ int main() {
     }
 
     if (!pressed && keycode != -1) {
-      atomic_store(&current_freq, 0.0);
+      /* atomic_store(&current_freq, 0.0); */
       keycode = -1;
+      note_off(&env, now);
     }
 
     if (is_key_down(KEY_Q)) break;
