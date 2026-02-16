@@ -186,6 +186,19 @@ f32 make_sound(f64 time) {
 }
 
 typedef enum {
+  KEY_1 = 18,
+  KEY_2 = 19,
+  KEY_3 = 20,
+  KEY_4 = 21,
+  KEY_5 = 23,
+  KEY_6 = 22,
+  KEY_7 = 26,
+  KEY_8 = 28,
+  KEY_9 = 25,
+  KEY_0 = 29,
+  KEY_MINUS = 27,
+  KEY_EQUAL = 24,
+
   KEY_Q = 12,
   KEY_W = 13,
   KEY_E = 14,
@@ -196,6 +209,10 @@ typedef enum {
   KEY_I = 34,
   KEY_O = 31,
   KEY_P = 35,
+  KEY_LBRACKET = 33,
+  KEY_RBRACKET = 30,
+  KEY_BSLASH = 42,
+
   KEY_A = 0,
   KEY_S = 1,
   KEY_D = 2,
@@ -206,30 +223,49 @@ typedef enum {
   KEY_K = 40,
   KEY_L = 37,
   KEY_SEMI = 41,
-} KeyboardKey;
+  KEY_QUOTE = 39,
+  KEY_ENTR = 36,
+  KEY_HOM = 115,
 
-typedef struct {
-  KeyboardKey code;
-  f64 freq;
-} PianoKey;
+  KEY_Z = 6,
+  KEY_X = 7,
+  KEY_C = 8,
+  KEY_V = 9,
+  KEY_B = 11,
+  KEY_N = 45,
+  KEY_M = 46,
+  KEY_COMMA = 43,
+  KEY_DOT = 47,
+  KEY_FSLASH = 44,
+} KeyboardKey;
 
 void draw_piano() {
   const char* piano =
     "\n"
-    "┌───┬───┬─┬───┬───┬───┬───┬─┬───┬─┬───┬───┐\n"
-    "│   │   │ │   │   │   │   │ │   │ │   │   │\n"
-    "│   │ W │ │ E │   │   │ T │ │ Y │ │ U │   │\n"
-    "│   └─┬─┘ └─┬─┘   │   └─┬─┘ └─┬─┘ └─┬─┘   │\n"
-    "│     │     │     │     │     │     │     │\n"
-    "│  A  │  S  │  D  │  F  │  G  │  H  │  J  │\n"
-    "└─────┴─────┴─────┴─────┴─────┴─────┴─────┘\n\n";
+    "┌───┬───┬─┬───┬───┬───┬───┬─┬───┬─┬───┬───┬───┬───┬─┬───┬───┬───┐\n"
+    "│   │   │ │   │   │   │   │ │   │ │   │   │   │   │ │   │   │   │\n"
+    "│   │ W │ │ E │   │   │ T │ │ Y │ │ U │   │   │ O │ │ P │   │   │\n"
+    "│   └─┬─┘ └─┬─┘   │   └─┬─┘ └─┬─┘ └─┬─┘   │   └─┬─┘ └─┬─┘   │   └─┐\n"
+    "│     │     │     │     │     │     │     │     │     │     │     │\n"
+    "│  A  │  S  │  D  │  F  │  G  │  H  │  J  │  K  │  L  │  ;  │  '  │\n"
+    "└─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘\n"
+    "┊  C  ┊  D  ┊  E  ┊  F  ┊  G  ┊  A  ┊  B  ┊  C' ┊  D' ┊  E' ┊  F'  \n\n";
+
   mvprintw(0, 0, piano);
 }
 
-void draw_stats(int y, int x, const char* note) {
+typedef struct {
+  KeyboardKey code;
+  f64 freq;
+  const char* repr;
+} Note;
+
+void draw_stats(int y, int x, Note* note) {
   move(y, 0);
   clrtoeol();
-  mvprintw(y, x, "Note: %-4s │ Frequency: %f Hz", note, atomic_load(&current_freq));
+  const char* repr = note ? note->repr : "NONE";
+  f32 freq = note ? note->freq : 0.0f;
+  mvprintw(y, x, "Note: %-4s │ Frequency: %07.3f Hz", repr, freq);
 }
 
 int main() {
@@ -243,57 +279,59 @@ int main() {
   Engine engine;
   engine_init(&engine, make_sound);
 
-  PianoKey piano[12] = {
-    {KEY_A, FREQ(-9)},  // C4
-    {KEY_W, FREQ(-8)},  // C#4
-    {KEY_S, FREQ(-7)},  // D4
-    {KEY_E, FREQ(-6)},  // D#4
-    {KEY_D, FREQ(-5)},  // E4
-    {KEY_F, FREQ(-4)},  // F4
-    {KEY_T, FREQ(-3)},  // F#4
-    {KEY_G, FREQ(-2)},  // G4
-    {KEY_Y, FREQ(-1)},  // G#4
-    {KEY_H, FREQ(0)},   // A4
-    {KEY_U, FREQ(1)},   // A#4
-    {KEY_J, FREQ(2)},   // B4
+  Note piano[] = {
+    {KEY_A, FREQ(-9), "C4"},
+    {KEY_W, FREQ(-8), "C#4"},
+    {KEY_S, FREQ(-7), "D4"},
+    {KEY_E, FREQ(-6), "D#4"},
+    {KEY_D, FREQ(-5), "E4"},
+    {KEY_F, FREQ(-4), "F4"},
+    {KEY_T, FREQ(-3), "F#4"},
+    {KEY_G, FREQ(-2), "G4"},
+    {KEY_Y, FREQ(-1), "G#4"},
+    {KEY_H, FREQ(0), "A4"},
+    {KEY_U, FREQ(1), "A#4"},
+    {KEY_J, FREQ(2), "B4"},
+    {KEY_K, FREQ(3), "C5"},
+    {KEY_O, FREQ(4), "C#5"},
+    {KEY_L, FREQ(5), "D5"},
+    {KEY_P, FREQ(6), "D#5"},
+    {KEY_SEMI, FREQ(7), "E5"},
+    {KEY_QUOTE, FREQ(8), "F5"},
   };
 
-  const char* notes[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+  int key_count = sizeof(piano) / sizeof(piano[0]);
 
   draw_piano();
   int y, x;
   getyx(stdscr, y, x);
 
-  int keycode = -1;
-  int note = -1;
+  Note* note = NULL;
 
   for (;;) {
     f64 now = engine_get_time(&engine);
 
     bool pressed = false;
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < key_count; i++) {
       if (is_key_down(piano[i].code)) {
         pressed = true;
-        note = i;
-        if (keycode != (int)piano[i].code) {
+        if (note != &piano[i]) {
           atomic_store(&current_freq, piano[i].freq);
-          keycode = piano[i].code;
+          note = &piano[i];
           note_on(&env, now);
         }
         break;
       }
-      note = -1;
     }
 
-    if (!pressed && keycode != -1) {
-      /* atomic_store(&current_freq, 0.0); */
-      keycode = -1;
+    if (!pressed && note != NULL) {
+      note = NULL;
       note_off(&env, now);
     }
 
     if (is_key_down(KEY_Q)) break;
 
-    draw_stats(y, x, note == -1 ? "NONE" : notes[note]);
+    draw_stats(y, x, note);
     refresh();
 
     usleep(1000);  // 1ms polling rate

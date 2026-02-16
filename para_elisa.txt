@@ -1,0 +1,27 @@
+MI'  RE'#  MI'  RE'#  MI'
+SI  RE'  DO'  LA
+DO  MI  LA  SI
+MI  Sol#  SI  DO'
+MI  MI'  RE'#  MI'  RE'#  MI'
+SI  RE'  DO'  LA
+DO  MI  LA  SI
+MI  DO'  SI  LA
+
+MI'  RE'#  MI'  RE'#  MI'
+SI  RE'  DO'  LA
+DO  MI  LA  SI
+MI  Sol#  SI  DO'
+MI  MI'  RE'#  MI'  RE'#  MI'
+SI  RE'  DO'  LA
+DO  MI  LA  SI
+MI  DO'  SI  LA
+
+SI  DO'  RE'  MI'
+Sol  FA'  MI'  RE'
+FA  MI'  RE'  DO'
+MI  RE'  DO'  SI
+
+MI'  RE'#  MI'  RE'#  MI'
+SI  RE'  DO'  LA
+DO  MI  LA  SI
+MI  DO'  SI  LA
