@@ -94,27 +94,73 @@ f32 make_sound(f64 time) {
   return 0.5 * sin(W(freq) * time);
 }
 
+typedef enum {
+  KEY_Q = 12,
+  KEY_W = 13,
+  KEY_E = 14,
+  KEY_R = 15,
+  KEY_T = 17,
+  KEY_Y = 16,
+  KEY_U = 32,
+  KEY_I = 34,
+  KEY_O = 31,
+  KEY_P = 35,
+  KEY_A = 0,
+  KEY_S = 1,
+  KEY_D = 2,
+  KEY_F = 3,
+  KEY_G = 5,
+  KEY_H = 4,
+  KEY_J = 38,
+  KEY_K = 40,
+  KEY_L = 37,
+  KEY_SEMI = 41,
+} KeyboardKey;
+
+typedef struct {
+  KeyboardKey code;
+  f64 freq;
+} PianoKey;
+
 int main() {
   Engine engine;
   engine_init(&engine, make_sound);
 
-  int keys[7] = {0, 1, 2, 3, 4, 5, 6};
-  f64 freqs[7] = {FREQ(-9), FREQ(-7), FREQ(-5), FREQ(-4), FREQ(-2), FREQ(0), FREQ(2)};
+  PianoKey piano[12] = {
+    {KEY_A, FREQ(-9)},  // C4
+    {KEY_W, FREQ(-8)},  // C#4
+    {KEY_S, FREQ(-7)},  // D4
+    {KEY_E, FREQ(-6)},  // D#4
+    {KEY_D, FREQ(-5)},  // E4
+    {KEY_F, FREQ(-4)},  // F4
+    {KEY_T, FREQ(-3)},  // F#4
+    {KEY_G, FREQ(-2)},  // G4
+    {KEY_Y, FREQ(-1)},  // G#4
+    {KEY_H, FREQ(0)},   // A4
+    {KEY_U, FREQ(1)},   // A#4
+    {KEY_J, FREQ(2)},   // B4
+  };
 
-  bool active = false;
-  bool pressed = false;
-
+  int active = -1;
   for (;;) {
-    pressed = is_key_down(0);
-    if (pressed && !active) {
-      atomic_store(&freq, FREQ(0));
-      active = true;
-    } else if (!pressed && active) {
-      atomic_store(&freq, 0.0);
-      active = false;
+    bool pressed = false;
+
+    for (int i = 0; i < 12; i++) {
+      if (is_key_down(piano[i].code)) {
+        pressed = true;
+        if (active != (int)piano[i].code) {
+          atomic_store(&freq, piano[i].freq);
+          active = piano[i].code;
+        }
+      }
+
+      if (!pressed && active != -1) {
+        atomic_store(&freq, 0.0);
+        active = -1;
+      }
     }
 
-    if (is_key_down(12)) break;
+    if (is_key_down(KEY_Q)) break;
 
     usleep(1000);  // 1ms polling rate
   }

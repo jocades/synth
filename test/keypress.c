@@ -61,14 +61,7 @@ bool is_key_down(CGKeyCode keycode) {
 }
 
 int main() {
-  /* pthread_t thread; */
-  /* pthread_create(&thread, NULL, listener, NULL); */
-  /**/
-  for (;;) {
-    if (is_key_down(0)) {
-      printf("down\n");
-    }
-  }
+  start_key_listener();
 
   return 0;
 }
