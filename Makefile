@@ -1,12 +1,23 @@
 CC := clang
-BUILD_DIR := ./build
-CLAGS := -std=c11 -Wall -Wextra
-FRAMEWORKS := -framework AudioToolBox -framework ApplicationServices
+CFLAGS := -std=c11 -Wall -Wextra -fcolor-diagnostics
+LIBS := -framework AudioToolBox -framework ApplicationServices -lncurses
 
-$(BUILD_DIR)/main: main.c
-	$(CC) $(CFLAGS) $(FRAMEWORKS) -o $@ $<
+ifeq ($(mode),debug)
+	CFLAGS += -O0 -g
+	BUILD_DIR := build/debug
+else
+	CFLAGS += -O2
+	BUILD_DIR := build/release
+endif
 
-run: $(BUILD_DIR)/main
-	$(BUILD_DIR)/main
+NAME := synth
+TARGET := $(BUILD_DIR)/$(NAME)
+
+$(TARGET): main.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(LIBS) -o $@ $<
+
+run: $(TARGET)
+	$(TARGET)
 
 .PHONY: run

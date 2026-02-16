@@ -1,5 +1,6 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <AudioToolbox/AudioToolbox.h>
+#include <ncurses.h>
 #include <stdatomic.h>
 
 typedef uint8_t u8;
@@ -124,14 +125,19 @@ typedef struct {
   _Atomic f64 trigger_time;
 } Envelope;
 
-void note_on() {}
+void note_on(Envelope* env) {}
 
-void note_off() {}
+void note_off(Envelope* env) {}
+
+f64 get_amp(Envelope* env, f64 time) {
+  f64 amp = 0.0;
+  return amp;
+}
 
 f32 make_sound(f64 time) {
   f64 freq = atomic_load(&current_freq);
   f64 amp = atomic_load(&current_amp);
-  return amp * osc(freq, time, OSC_SAW);
+  return amp * osc(freq, time, OSC_SINE);
 }
 
 typedef enum {
@@ -162,7 +168,47 @@ typedef struct {
   f64 freq;
 } PianoKey;
 
+void print_piano() {
+  printf(
+    "\n"
+    "┌───┬───┬─┬───┬───┬───┬───┬─┬───┬─┬───┬───┐\n"
+    "│   │   │ │   │   │   │   │ │   │ │   │   │\n"
+    "│   │ W │ │ E │   │   │ T │ │ Y │ │ U │   │\n"
+    "│   └─┬─┘ └─┬─┘   │   └─┬─┘ └─┬─┘ └─┬─┘   │\n"
+    "│     │     │     │     │     │     │     │\n"
+    "│  A  │  S  │  D  │  F  │  G  │  H  │  J  │\n"
+    "└─────┴─────┴─────┴─────┴─────┴─────┴─────┘\n\n"
+    /* "   C     D     E     F     G     A     B  \n\n" */
+  );
+}
+
+void draw_piano() {
+  const char* piano =
+    "\n"
+    "┌───┬───┬─┬───┬───┬───┬───┬─┬───┬─┬───┬───┐\n"
+    "│   │   │ │   │   │   │   │ │   │ │   │   │\n"
+    "│   │ W │ │ E │   │   │ T │ │ Y │ │ U │   │\n"
+    "│   └─┬─┘ └─┬─┘   │   └─┬─┘ └─┬─┘ └─┬─┘   │\n"
+    "│     │     │     │     │     │     │     │\n"
+    "│  A  │  S  │  D  │  F  │  G  │  H  │  J  │\n"
+    "└─────┴─────┴─────┴─────┴─────┴─────┴─────┘\n\n";
+  mvprintw(0, 0, piano);
+}
+
+void draw_stats(int y, int x, const char* note) {
+  move(y, 0);
+  clrtoeol();
+  mvprintw(y, x, "Note: %s │ Frequency: %f Hz", note, atomic_load(&current_freq));
+}
+
 int main() {
+  setlocale(LC_ALL, "en_US.UTF-8");
+  initscr();
+  cbreak();
+  noecho();
+  curs_set(1);
+  nodelay(stdscr, true);
+
   Engine engine;
   engine_init(&engine, make_sound);
 
@@ -181,31 +227,47 @@ int main() {
     {KEY_J, FREQ(2)},   // B4
   };
 
-  int active = -1;
-  for (;;) {
-    bool pressed = false;
+  const char* notes[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
+  draw_piano();
+  int y, x;
+  getyx(stdscr, y, x);
+
+  int keycode = -1;
+  int note = -1;
+
+  for (;;) {
+    f64 now = engine_get_time(&engine);
+
+    bool pressed = false;
     for (int i = 0; i < 12; i++) {
       if (is_key_down(piano[i].code)) {
         pressed = true;
-        if (active != (int)piano[i].code) {
+        note = i;
+        if (keycode != (int)piano[i].code) {
           atomic_store(&current_freq, piano[i].freq);
-          active = piano[i].code;
+          keycode = piano[i].code;
         }
+        break;
       }
+      note = -1;
+    }
 
-      if (!pressed && active != -1) {
-        atomic_store(&current_freq, 0.0);
-        active = -1;
-      }
+    if (!pressed && keycode != -1) {
+      atomic_store(&current_freq, 0.0);
+      keycode = -1;
     }
 
     if (is_key_down(KEY_Q)) break;
+
+    draw_stats(y, x, note == -1 ? "NONE" : notes[note]);
+    refresh();
 
     usleep(1000);  // 1ms polling rate
   }
 
   engine_stop(&engine);
+  endwin();
 
   return 0;
 }
