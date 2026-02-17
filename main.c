@@ -16,9 +16,6 @@
 // Get the frequency of a note relative to the pitch standard measured in semitones
 #define FREQ(semitones) (PITCH_STD * pow(TWELFTH_ROOT_OF_TWO, (semitones)))
 
-_Atomic f64 current_freq = 0.0;
-_Atomic f64 current_amp = 0.5;
-
 typedef enum {
   OSC_SINE,
   OSC_SQUARE,
@@ -357,31 +354,12 @@ int main() {
       }
 
       if (!pressed && note->pressed) {
-        /* note->active = false; */
         note->pressed = false;
         note->off = now;
       }
 
       pthread_mutex_unlock(&lock);
     }
-
-    /* bool pressed = false;
-    for (int i = 0; i < key_count; i++) {
-      if (is_key_down(piano[i].code)) {
-        pressed = true;
-        if (note != &piano[i]) {
-          atomic_store(&current_freq, piano[i].freq);
-          note = &piano[i];
-          note_on(&env, now);
-        }
-        break;
-      }
-    }
-
-    if (!pressed && note != NULL) {
-      note = NULL;
-      note_off(&env, now);
-    } */
 
     if (is_key_down(KEY_Q)) break;
 
