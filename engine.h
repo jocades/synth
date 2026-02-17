@@ -3,20 +3,7 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef size_t usize;
-
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef ssize_t isize;
-
-typedef float f32;
-typedef double f64;
+#include "ndefs.h"
 
 void audio_callback(void* ud, AudioQueueRef queue, AudioQueueBufferRef buf);
 
@@ -55,13 +42,17 @@ void engine_stop(Engine* engine) {
   AudioQueueDispose(engine->queue, true);
 }
 
+f64 engine_get_time(Engine* engine) {
+  return (f64)engine->total_samples / engine->fmt.mSampleRate;
+}
+
 void audio_callback(void* ud, AudioQueueRef queue, AudioQueueBufferRef buf) {
   Engine* engine = (Engine*)ud;
   f32* out = (f32*)buf->mAudioData;
   int num_samples = buf->mAudioDataBytesCapacity / sizeof(f32);
 
   for (int i = 0; i < num_samples; i++) {
-    f64 time = (f64)engine->total_samples / engine->fmt.mSampleRate;
+    f64 time = engine_get_time(engine);
     out[i] = engine->callback(time);
     engine->total_samples++;
   }
