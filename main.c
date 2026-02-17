@@ -1,7 +1,9 @@
-#include <ApplicationServices/ApplicationServices.h>
 #include <AudioToolbox/AudioToolbox.h>
 #include <ncurses.h>
+#include <pthread.h>
 #include <stdatomic.h>
+
+#include "kbd.h"
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -72,10 +74,6 @@ void audio_callback(void* ud, AudioQueueRef queue, AudioQueueBufferRef buf) {
 
   buf->mAudioDataByteSize = buf->mAudioDataBytesCapacity;
   AudioQueueEnqueueBuffer(queue, buf, 0, NULL);
-}
-
-bool is_key_down(CGKeyCode keycode) {
-  return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, keycode);
 }
 
 #define PI 3.14159265358979323846264338327950288
@@ -200,14 +198,6 @@ f64 get_amp(Envelope* env, f64 time) {
   return amp;
 }
 
-/* Envelope env = { */
-/*   .attack_time = 0.10, */
-/*   .decay_time = 0.01, */
-/*   .start_amp = 1.0, */
-/*   .sustain_amp = 0.8, */
-/*   .release_time = 0.2, */
-/* }; */
-
 typedef struct Instrument Instrument;
 typedef f64 (*InstrumentSound)(Instrument* self, f64 freq, f64 time);
 
@@ -267,65 +257,99 @@ Instrument* inst_bell_new() {
 
 Instrument* voice = NULL;
 
-f32 make_sound(f64 time) {
-  f64 freq = atomic_load(&current_freq);
-  f64 master = atomic_load(&current_amp);
-  return master * voice->sound(voice, freq, time);
+Envelope env = {
+  .attack_time = 0.10,
+  .decay_time = 0.01,
+  .start_amp = 1.0,
+  .sustain_amp = 0.8,
+  .release_time = 0.2,
+};
+
+f64 get_note_amp(Envelope* env, f64 time, f64 on, f64 off, bool* finished) {
+  f64 amp = 0.0;
+
+  if (on > off) {  // Note is on
+    f64 lifetime = time - on;
+
+    if (lifetime <= env->attack_time) {
+      amp = (lifetime / env->attack_time) * env->start_amp;
+    }
+
+    if (lifetime > env->attack_time && lifetime <= env->attack_time + env->decay_time) {
+      amp =
+        ((lifetime - env->attack_time) / env->decay_time) * (env->sustain_amp - env->start_amp) +
+        env->start_amp;
+    }
+
+    if (lifetime > env->attack_time + env->decay_time) {
+      amp = env->sustain_amp;
+    }
+
+  } else {
+    f64 lifetime = off - on;
+    f64 release_amp = 0.0;
+
+    if (lifetime <= env->attack_time) {
+      release_amp = (lifetime / env->attack_time) * env->start_amp;
+    }
+
+    if (lifetime > env->attack_time && lifetime <= env->attack_time + env->decay_time) {
+      release_amp =
+        ((lifetime - env->attack_time) / env->decay_time) * (env->sustain_amp - env->start_amp) +
+        env->start_amp;
+    }
+
+    if (lifetime > env->attack_time + env->decay_time) {
+      release_amp = env->sustain_amp;
+    }
+
+    amp = ((time - off) / env->release_time) * (0.0 - release_amp) + release_amp;
+  }
+
+  if (amp <= 0.00) {
+    amp = 0.0;
+    *finished = true;
+  };
+
+  return amp;
 }
 
-typedef enum {
-  KEY_1 = 18,
-  KEY_2 = 19,
-  KEY_3 = 20,
-  KEY_4 = 21,
-  KEY_5 = 23,
-  KEY_6 = 22,
-  KEY_7 = 26,
-  KEY_8 = 28,
-  KEY_9 = 25,
-  KEY_0 = 29,
-  KEY_MINUS = 27,
-  KEY_EQUAL = 24,
+typedef struct {
+  KeyboardKey keycode;
+  f64 freq;
+  f64 on;
+  f64 off;
+  bool pressed;
+  bool alive;
+} Note;
 
-  KEY_Q = 12,
-  KEY_W = 13,
-  KEY_E = 14,
-  KEY_R = 15,
-  KEY_T = 17,
-  KEY_Y = 16,
-  KEY_U = 32,
-  KEY_I = 34,
-  KEY_O = 31,
-  KEY_P = 35,
-  KEY_LBRACKET = 33,
-  KEY_RBRACKET = 30,
-  KEY_BSLASH = 42,
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+Note notes[] = {0};
 
-  KEY_A = 0,
-  KEY_S = 1,
-  KEY_D = 2,
-  KEY_F = 3,
-  KEY_G = 5,
-  KEY_H = 4,
-  KEY_J = 38,
-  KEY_K = 40,
-  KEY_L = 37,
-  KEY_SEMI = 41,
-  KEY_QUOTE = 39,
-  KEY_ENTR = 36,
-  KEY_HOM = 115,
+f32 make_sound(f64 time) {
+  f64 master = 0.5;
+  f64 freq = 0.0;
+  pthread_mutex_lock(&lock);
+  for (int i = 0; i < 18; i++) {
+    bool finished = false;
+    Note* note = &notes[i];
+    if (!note->alive) continue;
+    freq +=
+      get_note_amp(&env, time, note->on, note->off, &finished) * osc(note->freq, time, OSC_SINE);
+    if (finished && note->off > note->on) note->alive = false;
+  }
+  pthread_mutex_unlock(&lock);
 
-  KEY_Z = 6,
-  KEY_X = 7,
-  KEY_C = 8,
-  KEY_V = 9,
-  KEY_B = 11,
-  KEY_N = 45,
-  KEY_M = 46,
-  KEY_COMMA = 43,
-  KEY_DOT = 47,
-  KEY_FSLASH = 44,
-} KeyboardKey;
+  return master * freq;
+  /* return master * get_amp(&env, time) * osc(freq, time, OSC_SINE); */
+  /* return master * voice->sound(voice, freq, time); */
+}
+
+typedef struct {
+  KeyboardKey code;
+  f64 freq;
+  const char* repr;
+} PianoKey;
 
 void draw_piano() {
   const char* piano =
@@ -342,17 +366,11 @@ void draw_piano() {
   mvprintw(0, 0, piano);
 }
 
-typedef struct {
-  KeyboardKey code;
-  f64 freq;
-  const char* repr;
-} Note;
-
-void draw_stats(int y, int x, Note* note) {
+void draw_stats(int y, int x, PianoKey* key) {
   move(y, 0);
   clrtoeol();
-  const char* repr = note ? note->repr : "NONE";
-  f32 freq = note ? note->freq : 0.0f;
+  const char* repr = key ? key->repr : "NONE";
+  f32 freq = key ? key->freq : 0.0f;
   mvprintw(y, x, "Note: %-4s │ Frequency: %07.3f Hz", repr, freq);
 }
 
@@ -364,12 +382,12 @@ int main() {
   curs_set(1);
   nodelay(stdscr, true);
 
-  voice = inst_bell_new();
+  /* voice = inst_bell_new(); */
 
   Engine engine;
   engine_init(&engine, make_sound);
 
-  Note piano[] = {
+  PianoKey piano[] = {
     {KEY_A, FREQ(-9), "C4"},
     {KEY_W, FREQ(-8), "C#4"},
     {KEY_S, FREQ(-7), "D4"},
@@ -392,23 +410,49 @@ int main() {
 
   int key_count = sizeof(piano) / sizeof(piano[0]);
 
+  for (int i = 0; i < key_count; i++) {
+    notes[i].keycode = piano[i].code;
+    notes[i].freq = piano[i].freq;
+  }
+
   draw_piano();
   int y, x;
   getyx(stdscr, y, x);
 
-  Note* note = NULL;
+  PianoKey* key = NULL;
 
   for (;;) {
     f64 now = engine_get_time(&engine);
 
-    bool pressed = false;
+    for (int i = 0; i < key_count; i++) {
+      bool pressed = is_key_down(notes[i].keycode);
+
+      pthread_mutex_lock(&lock);
+      Note* note = &notes[i];
+
+      if (pressed && !note->pressed) {
+        note->pressed = true;
+        note->alive = true;
+        note->on = now;
+      }
+
+      if (!pressed && note->pressed) {
+        /* note->active = false; */
+        note->pressed = false;
+        note->off = now;
+      }
+
+      pthread_mutex_unlock(&lock);
+    }
+
+    /* bool pressed = false;
     for (int i = 0; i < key_count; i++) {
       if (is_key_down(piano[i].code)) {
         pressed = true;
         if (note != &piano[i]) {
           atomic_store(&current_freq, piano[i].freq);
           note = &piano[i];
-          note_on(&voice->env, now);
+          note_on(&env, now);
         }
         break;
       }
@@ -416,13 +460,13 @@ int main() {
 
     if (!pressed && note != NULL) {
       note = NULL;
-      note_off(&voice->env, now);
-    }
+      note_off(&env, now);
+    } */
 
     if (is_key_down(KEY_Q)) break;
 
-    draw_stats(y, x, note);
-    refresh();
+    /* draw_stats(y, x, key); */
+    /* refresh(); */
 
     usleep(1000);  // 1ms polling rate
   }
